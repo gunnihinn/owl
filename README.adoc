@@ -1,0 +1,39 @@
+= Owl
+
+Owl is a simple command-line work tracker.
+
+== Use
+
+Start working on a task:
+----
+$ owl start
+----
+Stop working on that task:
+----
+$ owl stop
+----
+This will bring up an editor where you can fill in labels that describe the
+task. The labels can be anything; we suggest one-word descriptions of
+companies, projects or similar. To get a report of work done since the
+beginning of the month, run:
+----
+$ owl report
+----
+See the program help and manual for more commands and options.
+
+== Data
+
+Owl keeps track of your time in a SQLite database that lives on your computer.
+You control your data, and can create any reports Owl doesn't yet know to do.
+
+== Hosting
+
+Contact the author for managed hosting options for Owl.
+
+== Author
+
+Gunnar Þór Magnússon <gunnar@magnusson.io>.
+
+== License
+
+This software is licensed under the GPLv3 license.
