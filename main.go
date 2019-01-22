@@ -33,6 +33,35 @@ func main() {
 		fmt.Println(msgVersion())
 		return
 	}
+
+	if len(flag.Args()) == 0 {
+		fmt.Println(msgHelp())
+		return
+	}
+
+	switch flag.Args()[0] {
+	case "start":
+		cmdStart()
+
+	case "stop":
+		cmdStop()
+
+	case "status":
+		cmdStatus()
+
+	case "report":
+		cmdReport()
+
+	default:
+		fmt.Println(msgHelp())
+	}
+}
+
+func cmdStart()  {}
+func cmdStop()   {}
+func cmdStatus() {}
+func cmdReport() {}
+
 }
 
 func msgHelp() string {
