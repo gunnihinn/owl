@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"strings"
+	"time"
 )
 
 var (
@@ -64,10 +67,67 @@ func main() {
 	}
 }
 
-func cmdStart()  {}
-func cmdStop()   {}
-func cmdStatus() {}
+func cmdStart() {}
+
+func cmdStop() {}
+
+func cmdStatus() {
+	if !fileExists(fileState()) {
+		fmt.Printf("Not working\n")
+		return
+	}
+
+	fh, err := os.Open(fileState())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+		return
+	}
+
+	defer fh.Close()
+	s, err := LoadState(fh)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: State corrupted: %s\n", err)
+
+		if err := os.Remove(fileState()); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Couldn't remove corrupted file: %s\n", err)
+		}
+
+		return
+	}
+
+	if s.EpochStart == 0 {
+		fmt.Printf("Not working\n")
+		return
+	} else if s.EpochStart < 0 {
+		fmt.Fprintf(os.Stderr, "Error: State corrupted: Contains negative epoch\n")
+
+		if err := os.Remove(fileState()); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Couldn't remove corrupted file: %s\n", err)
+		}
+
+		return
+	}
+
+	t := time.Unix(s.EpochStart, 0)
+	fmt.Printf("Working: Started at %s\n", t)
+}
+
 func cmdReport() {}
+
+type State struct {
+	EpochStart int64 `json:"epoch_start"`
+}
+
+func LoadState(r io.Reader) (State, error) {
+	s := State{}
+	err := json.NewDecoder(r).Decode(&s)
+
+	return s, err
+}
+
+func DumpState(w io.Writer, s State) error {
+	return json.NewEncoder(w).Encode(s)
+}
 
 func initFolders() error {
 	if err := os.MkdirAll(dirConfig(), 0755); err != nil {
@@ -103,6 +163,12 @@ func dirData() string {
 
 func fileState() string {
 	return path.Join(dirData(), "owl.state")
+}
+
+func fileExists(name string) bool {
+	_, err := os.Stat(name)
+
+	return err == nil
 }
 
 func msgHelp() string {
