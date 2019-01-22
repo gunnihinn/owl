@@ -57,7 +57,20 @@ func main() {
 		cmdStop()
 
 	case "status":
-		cmdStatus()
+		msg, err := cmdStatus()
+		switch err.(type) {
+		case nil:
+			fmt.Printf("%s\n", msg)
+
+		case ErrCorruptedState:
+			if e := os.Remove(fileState()); e != nil {
+				fmt.Fprintf(os.Stderr, "Error: Couldn't remove corrupted file: %s\n", e)
+			}
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+
+		default:
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+		}
 
 	case "report":
 		cmdReport()
@@ -67,49 +80,43 @@ func main() {
 	}
 }
 
+type ErrCorruptedState string
+
+func (e ErrCorruptedState) Error() string {
+	return string(e)
+}
+
+func errCorruptedState(format string, args ...interface{}) ErrCorruptedState {
+	return ErrCorruptedState(fmt.Sprintf(format, args...))
+}
+
 func cmdStart() {}
 
 func cmdStop() {}
 
-func cmdStatus() {
+func cmdStatus() (string, error) {
 	if !fileExists(fileState()) {
-		fmt.Printf("Not working\n")
-		return
+		return fmt.Sprintf("Not working"), nil
 	}
 
 	fh, err := os.Open(fileState())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		return
+		return "", fmt.Errorf("Error: %s", err)
 	}
 
 	defer fh.Close()
 	s, err := LoadState(fh)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: State corrupted: %s\n", err)
-
-		if err := os.Remove(fileState()); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Couldn't remove corrupted file: %s\n", err)
-		}
-
-		return
+		return "", errCorruptedState("Error: State corrupted: %s", err)
 	}
 
 	if s.EpochStart == 0 {
-		fmt.Printf("Not working\n")
-		return
+		return "Not working", nil
 	} else if s.EpochStart < 0 {
-		fmt.Fprintf(os.Stderr, "Error: State corrupted: Contains negative epoch\n")
-
-		if err := os.Remove(fileState()); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Couldn't remove corrupted file: %s\n", err)
-		}
-
-		return
+		return "", errCorruptedState("Error: State corrupted: Contains negative epoch")
 	}
 
-	t := time.Unix(s.EpochStart, 0)
-	fmt.Printf("Working: Started at %s\n", t)
+	return fmt.Sprintf("Working: Started at %s", time.Unix(s.EpochStart, 0)), nil
 }
 
 func cmdReport() {}
