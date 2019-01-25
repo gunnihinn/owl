@@ -54,8 +54,20 @@ func main() {
 		cmdStart()
 
 	case "stop":
-		cmdStop()
+		msg, err := cmdStop()
+		switch err.(type) {
+		case nil:
+			fmt.Printf("%s\n", msg)
 
+		case ErrCorruptedState:
+			if e := os.Remove(fileState()); e != nil {
+				fmt.Fprintf(os.Stderr, "Error: Couldn't remove corrupted file: %s\n", e)
+			}
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+
+		default:
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+		}
 	case "status":
 		msg, err := cmdStatus()
 		switch err.(type) {
@@ -92,7 +104,37 @@ func errCorruptedState(format string, args ...interface{}) ErrCorruptedState {
 
 func cmdStart() {}
 
-func cmdStop() {}
+func cmdStop() (string, error) {
+	if !fileExists(fileState()) {
+		return fmt.Sprintf("Not working"), nil
+	}
+
+	fh, err := os.Open(fileState())
+	if err != nil {
+		return "", fmt.Errorf("Error: %s", err)
+	}
+
+	defer fh.Close()
+	s, err := LoadState(fh)
+	if err != nil {
+		return "", errCorruptedState("Error: State corrupted: %s", err)
+	}
+
+	if s.EpochStart == 0 {
+		return "Not working", nil
+	} else if s.EpochStart < 0 {
+		return "", errCorruptedState("Error: State corrupted: Contains negative epoch")
+	}
+
+	start := time.Unix(s.EpochStart, 0)
+
+	stop := time.Now()
+	if err := os.Remove(fileState()); err != nil {
+		// ?
+	}
+
+	return "OK", nil
+}
 
 func cmdStatus() (string, error) {
 	if !fileExists(fileState()) {
@@ -116,7 +158,9 @@ func cmdStatus() (string, error) {
 		return "", errCorruptedState("Error: State corrupted: Contains negative epoch")
 	}
 
-	return fmt.Sprintf("Working: Started at %s", time.Unix(s.EpochStart, 0)), nil
+	start := time.Unix(s.EpochStart, 0)
+
+	return fmt.Sprintf("Working: Started at %s", start), nil
 }
 
 func cmdReport() {}
@@ -134,48 +178,6 @@ func LoadState(r io.Reader) (State, error) {
 
 func DumpState(w io.Writer, s State) error {
 	return json.NewEncoder(w).Encode(s)
-}
-
-func initFolders() error {
-	if err := os.MkdirAll(dirConfig(), 0755); err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(dirData(), 0755); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func dirConfig() string {
-	if dir, ok := os.LookupEnv("XDG_CONFIG_HOME"); ok {
-		return dir
-	}
-
-	return path.Join(os.Getenv("HOME"), ".config")
-}
-
-func fileConfig() string {
-	return path.Join(dirConfig(), "owl.cfg")
-}
-
-func dirData() string {
-	if dir, ok := os.LookupEnv("XDG_DATA_HOME"); ok {
-		return path.Join(dir, "owl")
-	}
-
-	return path.Join(os.Getenv("HOME"), ".local", "share", "owl")
-}
-
-func fileState() string {
-	return path.Join(dirData(), "owl.state")
-}
-
-func fileExists(name string) bool {
-	_, err := os.Stat(name)
-
-	return err == nil
 }
 
 func msgHelp() string {
