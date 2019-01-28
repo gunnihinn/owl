@@ -7,7 +7,7 @@ hash := $(shell git rev-parse --short HEAD)
 LDFLAGS :=
 
 $(bin): $(src)
-	go build $(LDFLAGS) -o $(bin) $(src)
+	go build $(LDFLAGS) -o $(bin)
 
 release: LDFLAGS = -ldflags "-X main.BuildDate=$(date) -X main.BuildEpoch=$(epoch) -X main.BuildHash=$(hash)"
 

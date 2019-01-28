@@ -1,5 +1,10 @@
 package main
 
+import (
+	"os"
+	"path"
+)
+
 func initFolders() error {
 	if err := os.MkdirAll(dirConfig(), 0755); err != nil {
 		return err

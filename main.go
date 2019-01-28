@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"strings"
 	"time"
 )
@@ -51,7 +50,20 @@ func main() {
 
 	switch flag.Args()[0] {
 	case "start":
-		cmdStart()
+		msg, err := cmdStart()
+		switch err.(type) {
+		case nil:
+			fmt.Printf("%s\n", msg)
+
+		case ErrCorruptedState:
+			if e := os.Remove(fileState()); e != nil {
+				fmt.Fprintf(os.Stderr, "Error: Couldn't remove corrupted file: %s\n", e)
+			}
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+
+		default:
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+		}
 
 	case "stop":
 		msg, err := cmdStop()
@@ -102,60 +114,58 @@ func errCorruptedState(format string, args ...interface{}) ErrCorruptedState {
 	return ErrCorruptedState(fmt.Sprintf(format, args...))
 }
 
-func cmdStart() {}
-
-func cmdStop() (string, error) {
-	if !fileExists(fileState()) {
-		return fmt.Sprintf("Not working"), nil
+func cmdStart() (string, error) {
+	s, err := loadStateFromFile(fileState())
+	if err != nil {
+		return "", err
 	}
 
-	fh, err := os.Open(fileState())
+	if s.EpochStart > 0 {
+		return "Already working", nil
+	}
+
+	start := time.Now()
+	s.EpochStart = start.Unix()
+	fh, err := os.Create(fileState())
 	if err != nil {
-		return "", fmt.Errorf("Error: %s", err)
+		return "", fmt.Errorf("Error: Couldn't open state file for writing: %s", err)
 	}
 
 	defer fh.Close()
-	s, err := LoadState(fh)
+	if err := DumpState(fh, s); err != nil {
+		return "", fmt.Errorf("Error: Couldn't write state: %s", err)
+	}
+
+	return fmt.Sprintf("Started work at %s", start), nil
+}
+
+func cmdStop() (string, error) {
+	s, err := loadStateFromFile(fileState())
 	if err != nil {
-		return "", errCorruptedState("Error: State corrupted: %s", err)
+		return "", err
 	}
 
 	if s.EpochStart == 0 {
 		return "Not working", nil
-	} else if s.EpochStart < 0 {
-		return "", errCorruptedState("Error: State corrupted: Contains negative epoch")
 	}
 
 	start := time.Unix(s.EpochStart, 0)
-
 	stop := time.Now()
 	if err := os.Remove(fileState()); err != nil {
-		// ?
+		// TODO: ?
 	}
 
-	return "OK", nil
+	return fmt.Sprintf("Worked for %d seconds", stop.Unix()-start.Unix()), nil
 }
 
 func cmdStatus() (string, error) {
-	if !fileExists(fileState()) {
-		return fmt.Sprintf("Not working"), nil
-	}
-
-	fh, err := os.Open(fileState())
+	s, err := loadStateFromFile(fileState())
 	if err != nil {
-		return "", fmt.Errorf("Error: %s", err)
-	}
-
-	defer fh.Close()
-	s, err := LoadState(fh)
-	if err != nil {
-		return "", errCorruptedState("Error: State corrupted: %s", err)
+		return "", err
 	}
 
 	if s.EpochStart == 0 {
 		return "Not working", nil
-	} else if s.EpochStart < 0 {
-		return "", errCorruptedState("Error: State corrupted: Contains negative epoch")
 	}
 
 	start := time.Unix(s.EpochStart, 0)
@@ -178,6 +188,29 @@ func LoadState(r io.Reader) (State, error) {
 
 func DumpState(w io.Writer, s State) error {
 	return json.NewEncoder(w).Encode(s)
+}
+
+func loadStateFromFile(filename string) (State, error) {
+	if !fileExists(filename) {
+		return State{}, nil
+	}
+
+	fh, err := os.Open(filename)
+	if err != nil {
+		return State{}, fmt.Errorf("Error: %s", err)
+	}
+
+	defer fh.Close()
+	s, err := LoadState(fh)
+	if err != nil {
+		return s, errCorruptedState("Error: State corrupted: %s", err)
+	}
+
+	if s.EpochStart < 0 {
+		return s, errCorruptedState("Error: State corrupted: Contains negative epoch")
+	}
+
+	return s, nil
 }
 
 func msgHelp() string {
